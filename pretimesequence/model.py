@@ -21,10 +21,17 @@ class PredictionResult:
 
 
 class TrendPredictor:
-    def __init__(self, model_path: str | Path | None = "data/xgboost_model.json", low_threshold: float = 0.3, high_threshold: float = 0.7):
+    def __init__(
+        self,
+        model_path: str | Path | None = "data/xgboost_model.json",
+        low_threshold: float = 0.3,
+        high_threshold: float = 0.7,
+        context_frames: dict[str, pd.DataFrame] | None = None,
+    ):
         self.model_path = Path(model_path) if model_path else None
         self.low_threshold = low_threshold
         self.high_threshold = high_threshold
+        self.context_frames = context_frames
         self._model = None
         self._last_score_is_probability = False
 
@@ -43,7 +50,7 @@ class TrendPredictor:
         return model
 
     def predict_scores(self, df: pd.DataFrame) -> pd.Series:
-        X, _ = make_feature_matrix(df)
+        X, _ = make_feature_matrix(df, context_frames=self.context_frames)
         model = self._load_xgboost()
         if model is not None:
             import xgboost as xgb
@@ -57,7 +64,7 @@ class TrendPredictor:
         return score.clip(0, 1).rename("trend_score")
 
     def predict_trends(self, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-        X, _ = make_feature_matrix(df)
+        X, _ = make_feature_matrix(df, context_frames=self.context_frames)
         model = self._load_xgboost()
         if model is None:
             scores = self.predict_scores(df)

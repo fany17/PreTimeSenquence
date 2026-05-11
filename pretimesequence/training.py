@@ -53,6 +53,7 @@ def train_xgboost_classifier(
     label_config: LabelConfig | None = None,
     train_config: TrainConfig | None = None,
     train_until: str | pd.Timestamp | None = None,
+    context_frames: dict[str, pd.DataFrame] | None = None,
 ) -> dict:
     try:
         from sklearn.metrics import balanced_accuracy_score, classification_report
@@ -68,7 +69,7 @@ def train_xgboost_classifier(
         if df.empty:
             raise ValueError(f"No training rows before train_until={train_until}")
     labelled = make_triple_barrier_labels(df, label_config)
-    X, featured = make_feature_matrix(labelled)
+    X, featured = make_feature_matrix(labelled, context_frames=context_frames)
     y = labelled["label_code"].astype(int)
     X_train, X_val, X_test, y_train, y_val, y_test = chronological_split(
         X, y, train_config.train_ratio, train_config.val_ratio

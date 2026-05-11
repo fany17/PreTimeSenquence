@@ -190,7 +190,57 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def make_feature_matrix(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _context_feature_frame(base: pd.DataFrame, context_frames: dict[str, pd.DataFrame] | None) -> pd.DataFrame:
+    if not context_frames:
+        return pd.DataFrame(index=base.index)
+
+    base_ts = pd.to_datetime(base["timestamp"])
+    base_close = pd.to_numeric(base["close"], errors="coerce")
+    out = pd.DataFrame(index=base.index)
+
+    for symbol, ctx in context_frames.items():
+        clean_symbol = "".join(ch.lower() if ch.isalnum() else "_" for ch in symbol).strip("_")
+        ctx = ctx.copy()
+        ctx["timestamp"] = pd.to_datetime(ctx["timestamp"], errors="coerce")
+        ctx = ctx.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp")
+        ctx_close = pd.to_numeric(ctx["close"], errors="coerce")
+        ctx_work = pd.DataFrame({"timestamp": ctx["timestamp"], "close": ctx_close})
+        ctx_work[f"{clean_symbol}_ret_1"] = ctx_close.pct_change(1)
+        ctx_work[f"{clean_symbol}_ret_5"] = ctx_close.pct_change(5)
+        ctx_work[f"{clean_symbol}_ret_20"] = ctx_close.pct_change(20)
+        ctx_work[f"{clean_symbol}_ret_60"] = ctx_close.pct_change(60)
+        ctx_log_ret = np.log(ctx_close / ctx_close.shift(1))
+        ctx_work[f"{clean_symbol}_vol_20"] = ctx_log_ret.rolling(20, min_periods=20).std()
+        ctx_work[f"{clean_symbol}_vol_60"] = ctx_log_ret.rolling(60, min_periods=60).std()
+        ctx_work[f"{clean_symbol}_range_pct"] = (
+            pd.to_numeric(ctx["high"], errors="coerce") - pd.to_numeric(ctx["low"], errors="coerce")
+        ) / ctx_close.shift(1)
+
+        merged = pd.merge_asof(
+            pd.DataFrame({"timestamp": base_ts}).sort_values("timestamp"),
+            ctx_work.sort_values("timestamp"),
+            on="timestamp",
+            direction="backward",
+            tolerance=pd.Timedelta("2min"),
+        ).set_index(base.sort_values("timestamp").index)
+        merged = merged.reindex(base.index)
+
+        for col in [c for c in merged.columns if c != "timestamp" and c != "close"]:
+            out[col] = merged[col]
+        if f"{clean_symbol}_ret_20" in out:
+            out[f"base_minus_{clean_symbol}_ret_20"] = base_close.pct_change(20) - out[f"{clean_symbol}_ret_20"]
+        if f"{clean_symbol}_ret_60" in out:
+            out[f"base_minus_{clean_symbol}_ret_60"] = base_close.pct_change(60) - out[f"{clean_symbol}_ret_60"]
+
+    return out
+
+
+def make_feature_matrix(
+    df: pd.DataFrame,
+    context_frames: dict[str, pd.DataFrame] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     featured = add_features(df)
-    X = featured[FEATURE_COLUMNS].ffill().fillna(0.0)
+    context_features = _context_feature_frame(featured, context_frames)
+    X = pd.concat([featured[FEATURE_COLUMNS], context_features], axis=1)
+    X = X.replace([np.inf, -np.inf], np.nan).ffill().fillna(0.0)
     return X, featured

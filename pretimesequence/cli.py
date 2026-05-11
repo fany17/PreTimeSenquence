@@ -12,6 +12,18 @@ from .training import train_xgboost_classifier
 from .visualization import write_signal_html
 
 
+def _parse_context_args(values: list[str] | None) -> dict[str, object]:
+    if not values:
+        return {}
+    contexts = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Context must be SYMBOL=PATH, got: {value}")
+        symbol, path = value.split("=", 1)
+        contexts[symbol.strip()] = load_market_data(path.strip())
+    return contexts
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pretimesequence")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -29,6 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--model", default="data/xgboost_model.json")
     predict.add_argument("--low", type=float, default=0.3)
     predict.add_argument("--high", type=float, default=0.7)
+    predict.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     label = sub.add_parser("label", help="Create finite-horizon triple-barrier labels.")
     label.add_argument("--data", required=True)
@@ -44,6 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
     train.add_argument("--atr-multiple", type=float, default=4.0)
     train.add_argument("--min-return", type=float, default=0.005)
     train.add_argument("--train-until", default=None, help="Only use rows at or before this timestamp for training.")
+    train.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     backtest = sub.add_parser("backtest", help="Backtest trend signals on local OHLCV data.")
     backtest.add_argument("--data", required=True)
@@ -52,6 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--leverage", type=float, default=20.0)
     backtest.add_argument("--margin", type=float, default=1.0)
     backtest.add_argument("--min-confidence", type=float, default=0.55)
+    backtest.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     account = sub.add_parser("account-backtest", help="Sequential account backtest for selected dates.")
     account.add_argument("--data", required=True)
@@ -67,6 +82,7 @@ def _build_parser() -> argparse.ArgumentParser:
     account.add_argument("--stop-loss-rate", type=float, default=0.28)
     account.add_argument("--fee-rate", type=float, default=0.0005)
     account.add_argument("--min-confidence", type=float, default=0.55)
+    account.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     plot = sub.add_parser("plot", help="Write an HTML candlestick chart with long/short signal markers.")
     plot.add_argument("--data", required=True)
@@ -74,6 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
     plot.add_argument("--output", default="outputs/signals.html")
     plot.add_argument("--min-confidence", type=float, default=0.55)
     plot.add_argument("--title", default="Trend Signals")
+    plot.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     diagnose = sub.add_parser("diagnose", help="Diagnose data, label, feature and model quality.")
     diagnose.add_argument("--data", required=True)
@@ -81,6 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     diagnose.add_argument("--horizon", type=int, default=20)
     diagnose.add_argument("--atr-multiple", type=float, default=4.0)
     diagnose.add_argument("--min-return", type=float, default=0.005)
+    diagnose.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     return parser
 
@@ -101,7 +119,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "predict":
         df = load_market_data(args.data)
-        predictor = TrendPredictor(args.model, low_threshold=args.low, high_threshold=args.high)
+        predictor = TrendPredictor(
+            args.model,
+            low_threshold=args.low,
+            high_threshold=args.high,
+            context_frames=_parse_context_args(args.context),
+        )
         result = predictor.predict_latest(df)
         print(
             f"{result.timestamp} close={result.close:.8g} "
@@ -129,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
             output_path=args.model,
             label_config=LabelConfig(horizon=args.horizon, atr_multiple=args.atr_multiple, min_return=args.min_return),
             train_until=args.train_until,
+            context_frames=_parse_context_args(args.context),
         )
         print(f"rows={metrics['rows']} model={metrics['model_path']}")
         print(f"label_counts={metrics['label_counts']}")
@@ -137,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backtest":
         df = load_market_data(args.data)
-        predictor = TrendPredictor(args.model)
+        predictor = TrendPredictor(args.model, context_frames=_parse_context_args(args.context))
         trades = run_backtest(
             df,
             predictor,
@@ -152,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "account-backtest":
         df = load_market_data(args.data)
-        predictor = TrendPredictor(args.model)
+        predictor = TrendPredictor(args.model, context_frames=_parse_context_args(args.context))
         config = BacktestConfig(
             leverage=args.leverage,
             margin=args.margin,
@@ -180,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "plot":
         df = load_market_data(args.data)
-        predictor = TrendPredictor(args.model)
+        predictor = TrendPredictor(args.model, context_frames=_parse_context_args(args.context))
         signals = write_signal_html(
             df,
             predictor,
@@ -199,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
             df,
             output_path=args.output,
             label_config=LabelConfig(horizon=args.horizon, atr_multiple=args.atr_multiple, min_return=args.min_return),
+            context_frames=_parse_context_args(args.context),
         )
         print(f"rows={result['rows']} labelled_rows={result['labelled_rows']} days={result['days']:.1f}")
         print(f"label_counts={result['label_counts']}")

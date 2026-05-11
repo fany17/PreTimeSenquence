@@ -112,6 +112,7 @@ def run_diagnostics(
     label_config: LabelConfig | None = None,
     train_config: TrainConfig | None = None,
     sample_for_mi: int = 20000,
+    context_frames: dict[str, pd.DataFrame] | None = None,
 ) -> dict:
     from sklearn.feature_selection import mutual_info_classif
     from sklearn.metrics import classification_report
@@ -119,7 +120,7 @@ def run_diagnostics(
     label_config = label_config or LabelConfig()
     train_config = train_config or TrainConfig(n_estimators=200)
     labelled = make_triple_barrier_labels(df, label_config)
-    X, featured = make_feature_matrix(labelled)
+    X, featured = make_feature_matrix(labelled, context_frames=context_frames)
     y = labelled["label_code"].astype(int)
     X_train, X_val, X_test, y_train, y_val, y_test = chronological_split(
         X, y, train_config.train_ratio, train_config.val_ratio
@@ -188,6 +189,7 @@ def run_diagnostics(
         f"- 中位 K 线间隔: {cadence['median_seconds']} 秒",
         f"- 大间隔数量: {cadence['large_gaps']}, 最大间隔: {cadence['max_gap']}",
         f"- 标签分布: {label_counts}",
+        f"- 特征数量: {X.shape[1]}",
         "",
         "## 验证表现",
         "",
