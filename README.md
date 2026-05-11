@@ -16,6 +16,12 @@ $env:BINANCE_PROXY_URL="http://127.0.0.1:7897"
 
 ## 常用命令
 
+使用已有 conda 环境：
+
+```powershell
+conda activate bitc
+```
+
 ```powershell
 python -m pretimesequence.cli predict --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json
 python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json --output outputs/backtest_trades.csv
