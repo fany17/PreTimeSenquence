@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .backtest import BacktestConfig, run_backtest
+from .backtest import BacktestConfig, run_account_backtest, run_backtest
 from .data import fetch_klines, load_market_data, save_market_data
 from .diagnostics import run_diagnostics
 from .model import TrendPredictor
@@ -51,6 +51,21 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--leverage", type=float, default=20.0)
     backtest.add_argument("--margin", type=float, default=1.0)
     backtest.add_argument("--min-confidence", type=float, default=0.55)
+
+    account = sub.add_parser("account-backtest", help="Sequential account backtest for selected dates.")
+    account.add_argument("--data", required=True)
+    account.add_argument("--model", default="data/xgboost_trend_model.json")
+    account.add_argument("--output", default="outputs/account_backtest_trades.csv")
+    account.add_argument("--daily-output", default="outputs/account_backtest_daily.csv")
+    account.add_argument("--start", default=None)
+    account.add_argument("--end", default=None)
+    account.add_argument("--initial-balance", type=float, default=1.0)
+    account.add_argument("--margin", type=float, default=1.0)
+    account.add_argument("--leverage", type=float, default=20.0)
+    account.add_argument("--take-profit-rate", type=float, default=0.38)
+    account.add_argument("--stop-loss-rate", type=float, default=0.28)
+    account.add_argument("--fee-rate", type=float, default=0.0005)
+    account.add_argument("--min-confidence", type=float, default=0.55)
 
     plot = sub.add_parser("plot", help="Write an HTML candlestick chart with long/short signal markers.")
     plot.add_argument("--data", required=True)
@@ -131,6 +146,34 @@ def main(argv: list[str] | None = None) -> int:
         trades.to_csv(output, index=False)
         total = 0.0 if trades.empty else float(trades["net_profit"].sum())
         print(f"trades={len(trades)} total_profit={total:.4f} saved={output}")
+        return 0
+
+    if args.command == "account-backtest":
+        df = load_market_data(args.data)
+        predictor = TrendPredictor(args.model)
+        config = BacktestConfig(
+            leverage=args.leverage,
+            margin=args.margin,
+            take_profit_rate=args.take_profit_rate,
+            stop_loss_rate=args.stop_loss_rate,
+            fee_rate=args.fee_rate,
+            min_confidence=args.min_confidence,
+            initial_balance=args.initial_balance,
+        )
+        trades, daily = run_account_backtest(df, predictor, config, start_time=args.start, end_time=args.end)
+        output = Path(args.output)
+        daily_output = Path(args.daily_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        daily_output.parent.mkdir(parents=True, exist_ok=True)
+        trades.to_csv(output, index=False)
+        daily.to_csv(daily_output, index=False)
+        final_balance = args.initial_balance if trades.empty else float(trades["end_balance"].iloc[-1])
+        total_profit = final_balance - args.initial_balance
+        print(f"trades={len(trades)} initial={args.initial_balance:.4f} final={final_balance:.4f} profit={total_profit:.4f}")
+        if not daily.empty:
+            print(daily.to_string(index=False))
+        print(f"saved={output}")
+        print(f"daily_saved={daily_output}")
         return 0
 
     if args.command == "plot":
