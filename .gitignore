@@ -10,11 +10,14 @@ __pycache__/
 *.log
 catboost_info/
 plots/
+outputs/
 temp.png
 plotupdate.txt
 
 # Large local datasets and trained model artifacts.
 # GitHub LFS quota is not available for this repository, so keep them local.
+data/*
+!data/.gitkeep
 *.pkl
 *.mat
 *.cbm
