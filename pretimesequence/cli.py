@@ -43,6 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
     train.add_argument("--horizon", type=int, default=20)
     train.add_argument("--atr-multiple", type=float, default=4.0)
     train.add_argument("--min-return", type=float, default=0.005)
+    train.add_argument("--train-until", default=None, help="Only use rows at or before this timestamp for training.")
 
     backtest = sub.add_parser("backtest", help="Backtest trend signals on local OHLCV data.")
     backtest.add_argument("--data", required=True)
@@ -127,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             df,
             output_path=args.model,
             label_config=LabelConfig(horizon=args.horizon, atr_multiple=args.atr_multiple, min_return=args.min_return),
+            train_until=args.train_until,
         )
         print(f"rows={metrics['rows']} model={metrics['model_path']}")
         print(f"label_counts={metrics['label_counts']}")

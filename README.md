@@ -30,6 +30,8 @@ python -m pretimesequence.cli plot --data data/market_data_DOGE_new.pkl --model 
 python -m pretimesequence.cli diagnose --data data/market_data_DOGE_new.pkl --output outputs/diagnostics.md
 python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/backtest_trades.csv --min-confidence 0.55
 python -m pretimesequence.cli account-backtest --data data/DOGEUSDT_1m_2024.pkl --model data/xgboost_trend_model_2024.json --start "2024-06-29 00:00:00" --end "2024-07-26 23:59:00" --initial-balance 1 --margin 1 --leverage 20 --take-profit-rate 0.38 --stop-loss-rate 0.28 --fee-rate 0.0005 --min-confidence 0.45
+python -m pretimesequence.cli train --data data/DOGEUSDT_1m_recent_600k.pkl --model data/xgboost_trend_model_recent_preholdout.json --train-until "2026-05-04 15:59:00"
+python -m pretimesequence.cli account-backtest --data data/DOGEUSDT_1m_recent_600k.pkl --model data/xgboost_trend_model_recent_preholdout.json --start "2026-05-04 16:00:00" --end "2026-05-11 15:59:00" --initial-balance 1 --margin 1 --leverage 20 --take-profit-rate 0.38 --stop-loss-rate 0.28 --fee-rate 0.0005 --min-confidence 0.45
 python -m pretimesequence.cli fetch --symbol DOGEUSDT --interval 1m --start-time "2024-01-01 00:00:00" --limit 300000 --output data/DOGEUSDT_1m_2024.pkl
 python -m pretimesequence.cli train --data data/DOGEUSDT_1m_2024.pkl --model data/xgboost_trend_model_2024.json
 python -m pretimesequence.cli diagnose --data data/DOGEUSDT_1m_2024.pkl --output outputs/diagnostics_DOGEUSDT_2024.md
