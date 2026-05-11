@@ -36,6 +36,8 @@
 
 后续已将特征改为收益、波动率、ATR、均线相对偏离、布林 z-score、量能 z-score 和日内周期项，并加入类别加权训练。当前 DOGE 35.6 天样本上的单次时间测试 balanced accuracy 约为 `0.352`，walk-forward 分段约为 `0.350-0.365`。模型不再坍缩到单一方向，但仍只略高于随机三分类，不能证明有可实盘使用的稳定 alpha。
 
+调用本地 Binance API key 拉取 `DOGEUSDT` 从 2024-01-01 开始的 300000 根 1m K 线后，样本扩展到约 208.3 天。时间测试 balanced accuracy 提升到约 `0.429`，walk-forward 四段约为 `0.375 / 0.396 / 0.430 / 0.430`，明显好于 majority baseline `0.333` 和 momentum20 baseline `0.347`。这说明此前“数据太少”是重要原因之一，但早期 fold 仍弱，regime shift 仍然明显。
+
 ## 下一步
 
 1. 先不要接实盘下单，直到 walk-forward 回测能稳定覆盖手续费和滑点。
