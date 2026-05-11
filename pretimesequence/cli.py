@@ -5,9 +5,11 @@ from pathlib import Path
 
 from .backtest import BacktestConfig, run_backtest
 from .data import fetch_klines, load_market_data, save_market_data
+from .diagnostics import run_diagnostics
 from .model import TrendPredictor
 from .targets import LabelConfig, label_summary, make_triple_barrier_labels
 from .training import train_xgboost_classifier
+from .visualization import write_signal_html
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,6 +48,20 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--output", default="outputs/backtest_trades.csv")
     backtest.add_argument("--leverage", type=float, default=20.0)
     backtest.add_argument("--margin", type=float, default=1.0)
+
+    plot = sub.add_parser("plot", help="Write an HTML candlestick chart with long/short signal markers.")
+    plot.add_argument("--data", required=True)
+    plot.add_argument("--model", default="data/xgboost_trend_model.json")
+    plot.add_argument("--output", default="outputs/signals.html")
+    plot.add_argument("--min-confidence", type=float, default=0.55)
+    plot.add_argument("--title", default="Trend Signals")
+
+    diagnose = sub.add_parser("diagnose", help="Diagnose data, label, feature and model quality.")
+    diagnose.add_argument("--data", required=True)
+    diagnose.add_argument("--output", default="outputs/diagnostics.md")
+    diagnose.add_argument("--horizon", type=int, default=20)
+    diagnose.add_argument("--atr-multiple", type=float, default=4.0)
+    diagnose.add_argument("--min-return", type=float, default=0.005)
 
     return parser
 
@@ -102,6 +118,35 @@ def main(argv: list[str] | None = None) -> int:
         trades.to_csv(output, index=False)
         total = 0.0 if trades.empty else float(trades["net_profit"].sum())
         print(f"trades={len(trades)} total_profit={total:.4f} saved={output}")
+        return 0
+
+    if args.command == "plot":
+        df = load_market_data(args.data)
+        predictor = TrendPredictor(args.model)
+        signals = write_signal_html(
+            df,
+            predictor,
+            output_path=args.output,
+            min_confidence=args.min_confidence,
+            title=args.title,
+        )
+        actions = signals["action"].value_counts().to_dict()
+        print(f"saved={args.output}")
+        print(f"actions={actions}")
+        return 0
+
+    if args.command == "diagnose":
+        df = load_market_data(args.data)
+        result = run_diagnostics(
+            df,
+            output_path=args.output,
+            label_config=LabelConfig(horizon=args.horizon, atr_multiple=args.atr_multiple, min_return=args.min_return),
+        )
+        print(f"rows={result['rows']} labelled_rows={result['labelled_rows']} days={result['days']:.1f}")
+        print(f"label_counts={result['label_counts']}")
+        print(f"baselines={result['baselines']}")
+        print(f"model_balanced_accuracy={result['model_balanced_accuracy']:.3f}")
+        print(f"saved={result['output_path']}")
         return 0
 
     raise ValueError(args.command)

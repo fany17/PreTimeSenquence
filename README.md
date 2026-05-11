@@ -26,6 +26,8 @@ conda activate bitc
 python -m pretimesequence.cli label --data data/market_data_DOGE_new.pkl --output data/market_data_DOGE_new_labels.csv
 python -m pretimesequence.cli train --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json
 python -m pretimesequence.cli predict --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json
+python -m pretimesequence.cli plot --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/signals.html
+python -m pretimesequence.cli diagnose --data data/market_data_DOGE_new.pkl --output outputs/diagnostics.md
 python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json --output outputs/backtest_trades.csv
 python -m pretimesequence.cli fetch --symbol BTCUSDT --interval 1m --limit 500 --output data/BTCUSDT_latest.pkl
 ```
@@ -42,4 +44,6 @@ python -m pretimesequence.cli fetch --symbol BTCUSDT --interval 1m --limit 500 -
 - `pretimesequence/model.py`: XGBoost 或 fallback 动量预测。
 - `pretimesequence/strategy.py`: 趋势到 `open_long/open_short/hold` 动作。
 - `pretimesequence/backtest.py`: 简化止盈止损回测。
+- `pretimesequence/visualization.py`: HTML K 线图和多空信号点。
+- `pretimesequence/diagnostics.py`: 数据量、标签、特征和模型质量诊断。
 - `pretimesequence/cli.py`: 命令行入口。
