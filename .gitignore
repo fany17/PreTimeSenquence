@@ -1,0 +1,35 @@
+# Local secrets. Keep real credentials outside Git.
+.env
+key.txt
+Getkey.py
+GetkeyReal.py
+
+# Runtime outputs and caches.
+__pycache__/
+*.py[cod]
+*.log
+catboost_info/
+plots/
+temp.png
+plotupdate.txt
+
+# Large local datasets and trained model artifacts.
+# GitHub LFS quota is not available for this repository, so keep them local.
+*.pkl
+*.mat
+*.cbm
+
+# Python environments and local tooling.
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
