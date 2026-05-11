@@ -25,14 +25,18 @@ conda activate bitc
 ```powershell
 python -m pretimesequence.cli label --data data/market_data_DOGE_new.pkl --output data/market_data_DOGE_new_labels.csv
 python -m pretimesequence.cli train --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json
-python -m pretimesequence.cli predict --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json
+python -m pretimesequence.cli predict --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json
 python -m pretimesequence.cli plot --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/signals.html
 python -m pretimesequence.cli diagnose --data data/market_data_DOGE_new.pkl --output outputs/diagnostics.md
-python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_model.json --output outputs/backtest_trades.csv
-python -m pretimesequence.cli fetch --symbol BTCUSDT --interval 1m --limit 500 --output data/BTCUSDT_latest.pkl
+python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/backtest_trades.csv --min-confidence 0.55
+python -m pretimesequence.cli fetch --symbol DOGEUSDT --interval 1m --start-time "2024-01-01 00:00:00" --limit 300000 --output data/DOGEUSDT_1m_2024.pkl
 ```
 
 当前默认 GT 是三分类 `short/flat/long`，使用 20 根 K 线 horizon、4ATR barrier、0.5% 最小收益门槛，并扣除手续费和滑点。这个默认值只是初始研究参数，不应该直接视为实盘参数。
+
+当前特征默认使用收益率、波动率、ATR、均线相对偏离、布林 z-score、量能 z-score 和日内周期项，避免把价格水平、均线绝对值这类非平稳变量直接作为主要输入。诊断命令会额外输出 walk-forward 分段验证，优先看它而不是单次随机切分。
+
+回测和 HTML 图默认使用 `min-confidence=0.55` 过滤低置信度信号。低置信度分类结果只作为 `flat/hold` 处理，避免模型被迫每根 K 线都给出交易动作。
 
 ## 结构
 

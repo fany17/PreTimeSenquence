@@ -19,7 +19,9 @@ def _build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser("fetch", help="Fetch recent Binance OHLCV data.")
     fetch.add_argument("--symbol", default="BTCUSDT")
     fetch.add_argument("--interval", default="1m")
-    fetch.add_argument("--limit", type=int, default=500)
+    fetch.add_argument("--limit", type=int, default=5000)
+    fetch.add_argument("--start-time", default=None)
+    fetch.add_argument("--spot", action="store_true", help="Use spot klines instead of futures klines.")
     fetch.add_argument("--output", default="data/latest.pkl")
 
     predict = sub.add_parser("predict", help="Predict the latest trend and action.")
@@ -48,6 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--output", default="outputs/backtest_trades.csv")
     backtest.add_argument("--leverage", type=float, default=20.0)
     backtest.add_argument("--margin", type=float, default=1.0)
+    backtest.add_argument("--min-confidence", type=float, default=0.55)
 
     plot = sub.add_parser("plot", help="Write an HTML candlestick chart with long/short signal markers.")
     plot.add_argument("--data", required=True)
@@ -69,7 +72,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "fetch":
-        df = fetch_klines(symbol=args.symbol, interval=args.interval, limit=args.limit)
+        df = fetch_klines(
+            symbol=args.symbol,
+            interval=args.interval,
+            limit=args.limit,
+            start_time=args.start_time,
+            futures=not args.spot,
+        )
         save_market_data(df, args.output)
         print(f"saved {len(df)} rows to {args.output}")
         return 0
@@ -112,7 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "backtest":
         df = load_market_data(args.data)
         predictor = TrendPredictor(args.model)
-        trades = run_backtest(df, predictor, BacktestConfig(leverage=args.leverage, margin=args.margin))
+        trades = run_backtest(
+            df,
+            predictor,
+            BacktestConfig(leverage=args.leverage, margin=args.margin, min_confidence=args.min_confidence),
+        )
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         trades.to_csv(output, index=False)

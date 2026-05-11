@@ -18,6 +18,8 @@ class TrainConfig:
     n_estimators: int = 300
     subsample: float = 0.8
     colsample_bytree: float = 0.8
+    min_class_weight: float = 0.5
+    max_class_weight: float = 3.0
 
 
 def chronological_split(X: pd.DataFrame, y: pd.Series, train_ratio: float = 0.70, val_ratio: float = 0.15):
@@ -34,6 +36,15 @@ def chronological_split(X: pd.DataFrame, y: pd.Series, train_ratio: float = 0.70
         y.iloc[train_end:val_end],
         y.iloc[val_end:],
     )
+
+
+def class_balanced_sample_weight(y: pd.Series, min_weight: float = 0.5, max_weight: float = 3.0) -> pd.Series:
+    counts = y.value_counts()
+    total = len(y)
+    n_classes = max(len(counts), 1)
+    weights = {label: total / (n_classes * count) for label, count in counts.items()}
+    weights = {label: min(max(weight, min_weight), max_weight) for label, weight in weights.items()}
+    return y.map(weights).astype(float)
 
 
 def train_xgboost_classifier(
@@ -68,7 +79,12 @@ def train_xgboost_classifier(
         eval_metric="mlogloss",
         random_state=42,
     )
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+    sample_weight = class_balanced_sample_weight(
+        y_train,
+        min_weight=train_config.min_class_weight,
+        max_weight=train_config.max_class_weight,
+    )
+    model.fit(X_train, y_train, sample_weight=sample_weight, eval_set=[(X_val, y_val)], verbose=False)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

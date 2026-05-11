@@ -26,6 +26,7 @@ class TrendPredictor:
         self.low_threshold = low_threshold
         self.high_threshold = high_threshold
         self._model = None
+        self._last_score_is_probability = False
 
     def _load_xgboost(self):
         if self._model is not None:
@@ -48,9 +49,11 @@ class TrendPredictor:
             import xgboost as xgb
 
             scores = model.predict(xgb.DMatrix(X))
+            self._last_score_is_probability = False
             return pd.Series(scores, index=df.index, name="trend_score").clip(0, 1)
 
         score = 0.5 + 2.5 * df["close"].pct_change(20).fillna(0)
+        self._last_score_is_probability = False
         return score.clip(0, 1).rename("trend_score")
 
     def predict_trends(self, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
@@ -67,9 +70,11 @@ class TrendPredictor:
             codes = raw.argmax(axis=1)
             confidence = raw.max(axis=1)
             trends = pd.Series([CODE_TO_TREND[int(code)] for code in codes], index=df.index, name="trend")
+            self._last_score_is_probability = True
             return pd.Series(confidence, index=df.index, name="trend_score"), trends
 
         scores = pd.Series(raw, index=df.index, name="trend_score").clip(0, 1)
+        self._last_score_is_probability = False
         return scores, self.classify_scores(scores)
 
     def classify_scores(self, scores: pd.Series) -> pd.Series:
@@ -86,7 +91,7 @@ class TrendPredictor:
             raise ValueError("No valid rows for prediction.")
         score = float(scores.loc[idx])
         trend = str(trends.loc[idx])
-        confidence = abs(score - 0.5) * 2
+        confidence = score if self._last_score_is_probability else abs(score - 0.5) * 2
         return PredictionResult(
             timestamp=pd.Timestamp(df.loc[idx, "timestamp"]),
             close=float(df.loc[idx, "close"]),

@@ -15,11 +15,14 @@ class BacktestConfig:
     take_profit_rate: float = 0.38
     stop_loss_rate: float = 0.28
     fee_rate: float = 0.0005
+    min_confidence: float = 0.55
 
 
 def run_backtest(df: pd.DataFrame, predictor: TrendPredictor, config: BacktestConfig | None = None) -> pd.DataFrame:
     config = config or BacktestConfig()
-    signals = attach_trade_signals(predictor.predict_frame(df))
+    predicted = predictor.predict_frame(df)
+    predicted.loc[predicted["trend_score"] < config.min_confidence, "trend"] = "flat"
+    signals = attach_trade_signals(predicted)
     trades: list[dict] = []
 
     for open_idx, row in signals[signals["action"].str.startswith(("open_", "flip_to_"), na=False)].iterrows():
