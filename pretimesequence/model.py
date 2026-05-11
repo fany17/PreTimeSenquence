@@ -8,6 +8,8 @@ import pandas as pd
 
 from .features import make_feature_matrix
 
+CODE_TO_TREND = {0: "short", 1: "flat", 2: "long"}
+
 
 @dataclass(frozen=True)
 class PredictionResult:
@@ -51,6 +53,25 @@ class TrendPredictor:
         score = 0.5 + 2.5 * df["close"].pct_change(20).fillna(0)
         return score.clip(0, 1).rename("trend_score")
 
+    def predict_trends(self, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+        X, _ = make_feature_matrix(df)
+        model = self._load_xgboost()
+        if model is None:
+            scores = self.predict_scores(df)
+            return scores, self.classify_scores(scores)
+
+        import xgboost as xgb
+
+        raw = model.predict(xgb.DMatrix(X))
+        if raw.ndim == 2 and raw.shape[1] == 3:
+            codes = raw.argmax(axis=1)
+            confidence = raw.max(axis=1)
+            trends = pd.Series([CODE_TO_TREND[int(code)] for code in codes], index=df.index, name="trend")
+            return pd.Series(confidence, index=df.index, name="trend_score"), trends
+
+        scores = pd.Series(raw, index=df.index, name="trend_score").clip(0, 1)
+        return scores, self.classify_scores(scores)
+
     def classify_scores(self, scores: pd.Series) -> pd.Series:
         return pd.Series(
             np.where(scores >= self.high_threshold, "long", np.where(scores <= self.low_threshold, "short", "flat")),
@@ -59,8 +80,7 @@ class TrendPredictor:
         )
 
     def predict_latest(self, df: pd.DataFrame) -> PredictionResult:
-        scores = self.predict_scores(df)
-        trends = self.classify_scores(scores)
+        scores, trends = self.predict_trends(df)
         idx = scores.last_valid_index()
         if idx is None:
             raise ValueError("No valid rows for prediction.")
@@ -77,6 +97,5 @@ class TrendPredictor:
 
     def predict_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
-        out["trend_score"] = self.predict_scores(df)
-        out["trend"] = self.classify_scores(out["trend_score"])
+        out["trend_score"], out["trend"] = self.predict_trends(df)
         return out
