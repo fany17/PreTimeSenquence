@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,8 +50,45 @@ class TrendPredictor:
         self._model = model
         return model
 
+    def _load_two_stage_xgboost(self):
+        if isinstance(self._model, dict) and self._model.get("model_type") == "two_stage_xgboost":
+            return self._model
+        if not self.model_path or not self.model_path.exists():
+            return None
+        try:
+            manifest = json.loads(self.model_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        if manifest.get("model_type") != "two_stage_xgboost":
+            return None
+        try:
+            import xgboost as xgb
+        except ImportError:
+            return None
+        trade_path = self.model_path.parent / manifest["trade_model"]
+        side_path = self.model_path.parent / manifest["side_model"]
+        trade_model = xgb.Booster()
+        side_model = xgb.Booster()
+        trade_model.load_model(str(trade_path))
+        side_model.load_model(str(side_path))
+        self._model = {
+            "model_type": "two_stage_xgboost",
+            "manifest": manifest,
+            "trade_model": trade_model,
+            "side_model": side_model,
+        }
+        return self._model
+
     def predict_scores(self, df: pd.DataFrame) -> pd.Series:
         X, _ = make_feature_matrix(df, context_frames=self.context_frames)
+        two_stage = self._load_two_stage_xgboost()
+        if two_stage is not None:
+            import xgboost as xgb
+
+            trade_prob = two_stage["trade_model"].predict(xgb.DMatrix(X))
+            self._last_score_is_probability = True
+            return pd.Series(trade_prob, index=df.index, name="trend_score").clip(0, 1)
+
         model = self._load_xgboost()
         if model is not None:
             import xgboost as xgb
@@ -65,6 +103,23 @@ class TrendPredictor:
 
     def predict_trends(self, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         X, _ = make_feature_matrix(df, context_frames=self.context_frames)
+        two_stage = self._load_two_stage_xgboost()
+        if two_stage is not None:
+            import xgboost as xgb
+
+            matrix = xgb.DMatrix(X)
+            trade_prob = two_stage["trade_model"].predict(matrix)
+            side_prob = two_stage["side_model"].predict(matrix)
+            manifest = two_stage["manifest"]
+            trade_threshold = float(manifest.get("trade_threshold", 0.5))
+            side_threshold = float(manifest.get("side_threshold", 0.5))
+            side_trend = np.where(side_prob >= side_threshold, "long", "short")
+            trend_values = np.where(trade_prob >= trade_threshold, side_trend, "flat")
+            confidence = np.where(trade_prob >= trade_threshold, trade_prob, 1 - trade_prob)
+            trends = pd.Series(trend_values, index=df.index, name="trend")
+            self._last_score_is_probability = True
+            return pd.Series(confidence, index=df.index, name="trend_score"), trends
+
         model = self._load_xgboost()
         if model is None:
             scores = self.predict_scores(df)

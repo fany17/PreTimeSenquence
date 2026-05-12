@@ -7,8 +7,8 @@ from .backtest import BacktestConfig, run_account_backtest, run_backtest
 from .data import fetch_klines, load_market_data, save_market_data
 from .diagnostics import run_diagnostics
 from .model import TrendPredictor
-from .targets import LabelConfig, label_summary, make_triple_barrier_labels
-from .training import train_xgboost_classifier
+from .targets import LabelConfig, TradeOutcomeConfig, label_summary, make_triple_barrier_labels
+from .training import train_two_stage_xgboost_classifier, train_xgboost_classifier
 from .visualization import write_signal_html
 
 
@@ -58,6 +58,18 @@ def _build_parser() -> argparse.ArgumentParser:
     train.add_argument("--min-return", type=float, default=0.005)
     train.add_argument("--train-until", default=None, help="Only use rows at or before this timestamp for training.")
     train.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
+
+    train_two = sub.add_parser("train-two-stage", help="Train trade/flat and long/short XGBoost models.")
+    train_two.add_argument("--data", required=True)
+    train_two.add_argument("--model", default="data/xgboost_two_stage_trend_model.json")
+    train_two.add_argument("--horizon", type=int, default=240)
+    train_two.add_argument("--leverage", type=float, default=20.0)
+    train_two.add_argument("--take-profit-rate", type=float, default=0.38)
+    train_two.add_argument("--stop-loss-rate", type=float, default=0.28)
+    train_two.add_argument("--fee-rate", type=float, default=0.0005)
+    train_two.add_argument("--min-net-profit", type=float, default=0.20)
+    train_two.add_argument("--train-until", default=None, help="Only use rows at or before this timestamp for training.")
+    train_two.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     backtest = sub.add_parser("backtest", help="Backtest trend signals on local OHLCV data.")
     backtest.add_argument("--data", required=True)
@@ -157,6 +169,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"rows={metrics['rows']} model={metrics['model_path']}")
         print(f"label_counts={metrics['label_counts']}")
         print(f"test_balanced_accuracy={metrics['test_balanced_accuracy']:.3f}")
+        return 0
+
+    if args.command == "train-two-stage":
+        df = load_market_data(args.data)
+        metrics = train_two_stage_xgboost_classifier(
+            df,
+            output_path=args.model,
+            outcome_config=TradeOutcomeConfig(
+                horizon=args.horizon,
+                leverage=args.leverage,
+                take_profit_rate=args.take_profit_rate,
+                stop_loss_rate=args.stop_loss_rate,
+                fee_rate=args.fee_rate,
+                min_net_profit=args.min_net_profit,
+            ),
+            train_until=args.train_until,
+            context_frames=_parse_context_args(args.context),
+        )
+        print(f"rows={metrics['rows']} model={metrics['model_path']}")
+        print(f"label_counts={metrics['label_counts']}")
+        print(f"trade_counts={metrics['trade_counts']}")
+        print(f"test_trade_balanced_accuracy={metrics['test_trade_balanced_accuracy']:.3f}")
+        side_acc = metrics["test_side_balanced_accuracy"]
+        print(f"test_side_balanced_accuracy={side_acc:.3f}" if side_acc is not None else "test_side_balanced_accuracy=NA")
+        print(f"test_final_balanced_accuracy={metrics['test_final_balanced_accuracy']:.3f}")
         return 0
 
     if args.command == "backtest":
