@@ -51,6 +51,16 @@ FEATURE_COLUMNS = [
     "obv_roc_20",
     "rolling_skew",
     "rolling_kurtosis",
+    "forecast_ewm_ret_5",
+    "forecast_ewm_ret_20",
+    "forecast_ewm_ret_60",
+    "forecast_mom_ret_20",
+    "forecast_mom_ret_60",
+    "forecast_z_20",
+    "forecast_z_60",
+    "forecast_up_prob_proxy_20",
+    "forecast_down_prob_proxy_20",
+    "forecast_edge_to_cost_20",
     "is_hammer",
     "minute_sin",
     "minute_cos",
@@ -149,6 +159,23 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     out["rolling_skew"] = out["log_return"].rolling(20, min_periods=20).skew()
     out["rolling_kurtosis"] = out["log_return"].rolling(20, min_periods=20).kurt()
 
+    # Past-only forecast features. These are model inputs, not labels: they
+    # summarize what a simple rolling forecaster would expect after bar t.
+    ewm_fast = out["log_return"].ewm(span=20, adjust=False, min_periods=20).mean()
+    ewm_mid = out["log_return"].ewm(span=60, adjust=False, min_periods=60).mean()
+    ewm_slow = out["log_return"].ewm(span=120, adjust=False, min_periods=120).mean()
+    out["forecast_ewm_ret_5"] = np.expm1(ewm_fast * 5)
+    out["forecast_ewm_ret_20"] = np.expm1(ewm_mid * 20)
+    out["forecast_ewm_ret_60"] = np.expm1(ewm_slow * 60)
+    out["forecast_mom_ret_20"] = 0.6 * out["roc_20"] + 0.3 * out["roc_10"] + 0.1 * out["roc_5"]
+    out["forecast_mom_ret_60"] = 0.5 * out["roc_60"] + 0.3 * out["roc_30"] + 0.2 * out["roc_20"]
+    out["forecast_z_20"] = out["forecast_ewm_ret_20"] / (out["realized_vol_20"] * np.sqrt(20) + eps)
+    out["forecast_z_60"] = out["forecast_ewm_ret_60"] / (out["realized_vol_60"] * np.sqrt(60) + eps)
+    clipped_z20 = out["forecast_z_20"].clip(-8, 8)
+    out["forecast_up_prob_proxy_20"] = 1 / (1 + np.exp(-clipped_z20))
+    out["forecast_down_prob_proxy_20"] = 1 - out["forecast_up_prob_proxy_20"]
+    out["forecast_edge_to_cost_20"] = out["forecast_ewm_ret_20"].abs() / (out["atr_pct"] + eps)
+
     body = (close - open_).abs()
     candle_range = high - low
     lower_shadow = np.minimum(close, open_) - low
@@ -212,6 +239,13 @@ def _context_feature_frame(base: pd.DataFrame, context_frames: dict[str, pd.Data
         ctx_log_ret = np.log(ctx_close / ctx_close.shift(1))
         ctx_work[f"{clean_symbol}_vol_20"] = ctx_log_ret.rolling(20, min_periods=20).std()
         ctx_work[f"{clean_symbol}_vol_60"] = ctx_log_ret.rolling(60, min_periods=60).std()
+        ctx_forecast_20 = np.expm1(ctx_log_ret.ewm(span=60, adjust=False, min_periods=60).mean() * 20)
+        ctx_forecast_60 = np.expm1(ctx_log_ret.ewm(span=120, adjust=False, min_periods=120).mean() * 60)
+        ctx_work[f"{clean_symbol}_forecast_ret_20"] = ctx_forecast_20
+        ctx_work[f"{clean_symbol}_forecast_ret_60"] = ctx_forecast_60
+        ctx_work[f"{clean_symbol}_forecast_z_20"] = ctx_forecast_20 / (
+            ctx_work[f"{clean_symbol}_vol_20"] * np.sqrt(20) + 1e-12
+        )
         ctx_work[f"{clean_symbol}_range_pct"] = (
             pd.to_numeric(ctx["high"], errors="coerce") - pd.to_numeric(ctx["low"], errors="coerce")
         ) / ctx_close.shift(1)

@@ -47,6 +47,8 @@ python -m pretimesequence.cli plot --data data/DOGEUSDT_1m_2024.pkl --model data
 
 `--context SYMBOL=PATH` 可为训练、诊断、预测、回测加入 BTC/ETH/SOL 等市场背景特征。当前实验见 `docs/context_feature_experiment.md`：简单拼接 context 特征未明显改善 XGBoost。
 
+两阶段 XGBoost 使用 `train-two-stage` 和 `walk-forward-two-stage`。GT 已增加交易口径标签，按真实 TP/SL、杠杆和手续费模拟 long/short outcome。SOL 的 walk-forward 和 forecast features 实验见 `docs/two_stage_xgboost_experiment.md`、`docs/walk_forward_two_stage_sol.md`、`docs/forecast_feature_experiment.md`。
+
 本地 API key 可来自环境变量，也可 fallback 读取 `oldversion/GetkeyReal.py` 或 `oldversion/Getkey.py`。这些文件被 `.gitignore` 排除，不会提交到远端。
 
 ## 结构
