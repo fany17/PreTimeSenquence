@@ -6,6 +6,7 @@ from pathlib import Path
 from .backtest import BacktestConfig, run_account_backtest, run_backtest
 from .data import fetch_klines, load_market_data, save_market_data
 from .diagnostics import run_diagnostics
+from .evaluation import WalkForwardConfig, run_two_stage_walk_forward
 from .model import TrendPredictor
 from .targets import LabelConfig, TradeOutcomeConfig, label_summary, make_triple_barrier_labels
 from .training import train_two_stage_xgboost_classifier, train_xgboost_classifier
@@ -70,6 +71,24 @@ def _build_parser() -> argparse.ArgumentParser:
     train_two.add_argument("--min-net-profit", type=float, default=0.20)
     train_two.add_argument("--train-until", default=None, help="Only use rows at or before this timestamp for training.")
     train_two.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
+
+    walk_two = sub.add_parser("walk-forward-two-stage", help="Walk-forward train/backtest two-stage XGBoost.")
+    walk_two.add_argument("--data", required=True)
+    walk_two.add_argument("--model-dir", default="data/walk_forward_two_stage")
+    walk_two.add_argument("--output", default="outputs/walk_forward_two_stage.csv")
+    walk_two.add_argument("--start", required=True, help="First test period start timestamp.")
+    walk_two.add_argument("--periods", type=int, default=5)
+    walk_two.add_argument("--period-days", type=int, default=7)
+    walk_two.add_argument("--min-confidence", action="append", type=float, default=None)
+    walk_two.add_argument("--horizon", type=int, default=120)
+    walk_two.add_argument("--leverage", type=float, default=20.0)
+    walk_two.add_argument("--take-profit-rate", type=float, default=0.38)
+    walk_two.add_argument("--stop-loss-rate", type=float, default=0.28)
+    walk_two.add_argument("--fee-rate", type=float, default=0.0005)
+    walk_two.add_argument("--min-net-profit", type=float, default=0.20)
+    walk_two.add_argument("--initial-balance", type=float, default=1.0)
+    walk_two.add_argument("--margin", type=float, default=1.0)
+    walk_two.add_argument("--context", action="append", default=None, help="Context market data as SYMBOL=PATH.")
 
     backtest = sub.add_parser("backtest", help="Backtest trend signals on local OHLCV data.")
     backtest.add_argument("--data", required=True)
@@ -194,6 +213,43 @@ def main(argv: list[str] | None = None) -> int:
         side_acc = metrics["test_side_balanced_accuracy"]
         print(f"test_side_balanced_accuracy={side_acc:.3f}" if side_acc is not None else "test_side_balanced_accuracy=NA")
         print(f"test_final_balanced_accuracy={metrics['test_final_balanced_accuracy']:.3f}")
+        return 0
+
+    if args.command == "walk-forward-two-stage":
+        df = load_market_data(args.data)
+        min_confidences = tuple(args.min_confidence or [0.55, 0.60, 0.65])
+        result = run_two_stage_walk_forward(
+            df,
+            model_dir=args.model_dir,
+            output_path=args.output,
+            walk_config=WalkForwardConfig(
+                start=args.start,
+                periods=args.periods,
+                period_days=args.period_days,
+                min_confidences=min_confidences,
+                initial_balance=args.initial_balance,
+                margin=args.margin,
+            ),
+            outcome_config=TradeOutcomeConfig(
+                horizon=args.horizon,
+                leverage=args.leverage,
+                take_profit_rate=args.take_profit_rate,
+                stop_loss_rate=args.stop_loss_rate,
+                fee_rate=args.fee_rate,
+                min_net_profit=args.min_net_profit,
+            ),
+            backtest_config=BacktestConfig(
+                leverage=args.leverage,
+                margin=args.margin,
+                take_profit_rate=args.take_profit_rate,
+                stop_loss_rate=args.stop_loss_rate,
+                fee_rate=args.fee_rate,
+                initial_balance=args.initial_balance,
+            ),
+            context_frames=_parse_context_args(args.context),
+        )
+        print(result[["fold", "min_confidence", "trades", "wins", "losses", "final_balance", "profit"]].to_string(index=False))
+        print(f"saved={args.output}")
         return 0
 
     if args.command == "backtest":
