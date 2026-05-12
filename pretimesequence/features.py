@@ -61,6 +61,11 @@ FEATURE_COLUMNS = [
     "forecast_up_prob_proxy_20",
     "forecast_down_prob_proxy_20",
     "forecast_edge_to_cost_20",
+    "forecast_agreement_20",
+    "forecast_confidence_20",
+    "forecast_confidence_60",
+    "forecast_uncertainty_20",
+    "forecast_risk_adjusted_edge_20",
     "is_hammer",
     "minute_sin",
     "minute_cos",
@@ -175,6 +180,24 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     out["forecast_up_prob_proxy_20"] = 1 / (1 + np.exp(-clipped_z20))
     out["forecast_down_prob_proxy_20"] = 1 - out["forecast_up_prob_proxy_20"]
     out["forecast_edge_to_cost_20"] = out["forecast_ewm_ret_20"].abs() / (out["atr_pct"] + eps)
+    forecast_votes = pd.concat(
+        [
+            np.sign(out["forecast_ewm_ret_20"]),
+            np.sign(out["forecast_mom_ret_20"]),
+            np.sign(out["roc_20"]),
+            np.sign(out["MACD_hist_pct"]),
+        ],
+        axis=1,
+    )
+    out["forecast_agreement_20"] = forecast_votes.mean(axis=1).abs()
+    out["forecast_uncertainty_20"] = out["realized_vol_20"] * np.sqrt(20)
+    confidence_base_20 = out["forecast_z_20"].abs().clip(0, 8)
+    confidence_base_60 = out["forecast_z_60"].abs().clip(0, 8)
+    out["forecast_confidence_20"] = (1 - np.exp(-confidence_base_20)) * out["forecast_agreement_20"]
+    out["forecast_confidence_60"] = 1 - np.exp(-confidence_base_60)
+    out["forecast_risk_adjusted_edge_20"] = (
+        out["forecast_ewm_ret_20"].abs() * out["forecast_confidence_20"] / (out["forecast_uncertainty_20"] + eps)
+    )
 
     body = (close - open_).abs()
     candle_range = high - low
@@ -265,6 +288,12 @@ def _context_feature_frame(base: pd.DataFrame, context_frames: dict[str, pd.Data
             out[f"base_minus_{clean_symbol}_ret_20"] = base_close.pct_change(20) - out[f"{clean_symbol}_ret_20"]
         if f"{clean_symbol}_ret_60" in out:
             out[f"base_minus_{clean_symbol}_ret_60"] = base_close.pct_change(60) - out[f"{clean_symbol}_ret_60"]
+
+    forecast_cols = [c for c in out.columns if c.endswith("_forecast_z_20")]
+    if forecast_cols:
+        context_signs = pd.concat([np.sign(out[c]) for c in forecast_cols], axis=1)
+        out["context_forecast_agreement"] = context_signs.mean(axis=1).abs()
+        out["context_forecast_mean_z"] = out[forecast_cols].mean(axis=1)
 
     return out
 
