@@ -1,66 +1,108 @@
 # PreTimeSequence
 
-用于获取币安 OHLCV 序列、预测最近趋势，并转换成多空操作信号的研究项目。
+面向加密货币永续合约的短周期量化研究项目。项目目标是使用 1 分钟市场数据，在每根 K 线关闭后评估未来约 15 分钟的可交易机会，并在严格的成本、回测和风险约束下形成多空或不交易决策。
 
-## 安全配置
+> [!WARNING]
+> 本仓库当前是研究项目，不是可直接运行的实盘交易系统。现有 v0 代码和历史实验尚未证明稳定 alpha，不得据此直接使用真实资金或高杠杆下单。
 
-不要把真实 API key 写入代码。复制 `.env.example` 到本地环境变量或手动设置：
+## 项目状态
 
-```powershell
-$env:BINANCE_API_KEY="..."
-$env:BINANCE_API_SECRET="..."
-$env:BINANCE_PROXY_URL="http://127.0.0.1:7897"
+项目正在从早期趋势分类原型重构为可复现的 15 分钟决策研究框架：
+
+- **v0（当前代码）**：保留已有 Binance 数据获取、技术指标、XGBoost、两阶段分类和账户回测代码，作为历史基线与问题证据。
+- **v1（目标架构）**：统一交易时序、Ground Truth、验证和回测口径；预测收益分布与多空 action value；将杠杆移至仓位和风险层。
+- **当前结论**：已有 walk-forward 结果跨市场状态不稳定，尚不满足实盘门槛。
+
+完整进度与已知问题见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+
+## 统一研究问题
+
+在第 `t` 根 1 分钟 K 线关闭后，仅使用当时及此前可见的信息，能否对从第 `t+1` 根 K 线开始的未来 15 分钟价格路径进行有效预测，并在扣除手续费、点差、滑点和风险惩罚后，识别具有正期望值的 long、short 或 flat 决策？
+
+v1 默认交易时序：
+
+```text
+bar t close
+  -> 构建特征与预测
+  -> 生成 long / short / flat 决策
+  -> bar t+1 open 或可成交报价入场
+  -> 最多持有 15 分钟
+  -> TP / SL / time exit / risk exit
 ```
 
-历史的 `Getkey.py` / `GetkeyReal.py` 仍可被本地 fallback 读取，但已被 `.gitignore` 排除。
+10–20 倍仅作为允许的杠杆上限。模型首先预测市场机会，风险层再根据止损距离、账户风险预算和流动性决定实际仓位。
 
-## 常用命令
+## 当前代码与目标架构
 
-使用已有 conda 环境：
+| 模块 | v0 当前实现 | v1 目标 |
+| --- | --- | --- |
+| 数据 | Binance 1m K 线、本地 PKL/CSV、context 币种 | 可校验、可追溯、分层存储的期货市场数据 |
+| 特征 | 技术指标、收益率、波动、context、手工 forecast proxy | 因果特征、微观结构、独立 OOF forecast 输出 |
+| GT | 20 分钟 ATR 三分类与 120/240 分钟交易标签并存 | 统一 15 分钟收益、MFE/MAE、TP/SL 概率和 action value |
+| 模型 | 单阶段/两阶段 XGBoost | 基线 -> forecast model -> calibration -> meta filter |
+| 验证 | 时间切分、部分 walk-forward | purged/embargoed nested walk-forward 与冻结 holdout |
+| 回测 | 简化账户回测 | 逐事件状态机、真实成交与风险约束 |
+| 实盘 | 未形成完整执行系统 | 仅在研究门槛通过后进入 paper trading |
 
-```powershell
-conda activate bitc
+## 仓库结构
+
+```text
+PreTimeSenquence/
+├── README.md                         项目入口与统一口径
+├── PROJECT_STATUS.md                 当前状态、问题与决策记录
+├── AGENTS.md                         AI/Codex 工作规则
+├── CONTRIBUTING.md                   协作与提交规范
+├── docs/
+│   ├── README.md                     文档索引
+│   ├── ARCHITECTURE.md               v1 目标架构
+│   ├── STRATEGY_SPEC.md              唯一策略合同
+│   ├── DATA_SPEC.md                  数据规范
+│   ├── GROUND_TRUTH_AND_VALIDATION.md 标签、验证与回测规范
+│   ├── ROADMAP.md                    分阶段重构计划
+│   └── EXPERIMENT_TEMPLATE.md        实验记录模板
+├── pretimesequence/                  v0 Python 代码，暂时保留
+├── oldversion/                       更早期历史代码，不作为当前入口
+└── requirements.txt                  v0 依赖
 ```
 
-```powershell
-python -m pretimesequence.cli label --data data/market_data_DOGE_new.pkl --output data/market_data_DOGE_new_labels.csv
-python -m pretimesequence.cli train --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json
-python -m pretimesequence.cli predict --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json
-python -m pretimesequence.cli plot --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/signals.html
-python -m pretimesequence.cli diagnose --data data/market_data_DOGE_new.pkl --output outputs/diagnostics.md
-python -m pretimesequence.cli backtest --data data/market_data_DOGE_new.pkl --model data/xgboost_trend_model.json --output outputs/backtest_trades.csv --min-confidence 0.55
-python -m pretimesequence.cli account-backtest --data data/DOGEUSDT_1m_2024.pkl --model data/xgboost_trend_model_2024.json --start "2024-06-29 00:00:00" --end "2024-07-26 23:59:00" --initial-balance 1 --margin 1 --leverage 20 --take-profit-rate 0.38 --stop-loss-rate 0.28 --fee-rate 0.0005 --min-confidence 0.45
-python -m pretimesequence.cli train --data data/DOGEUSDT_1m_recent_600k.pkl --model data/xgboost_trend_model_recent_preholdout.json --train-until "2026-05-04 15:59:00"
-python -m pretimesequence.cli account-backtest --data data/DOGEUSDT_1m_recent_600k.pkl --model data/xgboost_trend_model_recent_preholdout.json --start "2026-05-04 16:00:00" --end "2026-05-11 15:59:00" --initial-balance 1 --margin 1 --leverage 20 --take-profit-rate 0.38 --stop-loss-rate 0.28 --fee-rate 0.0005 --min-confidence 0.45
-python -m pretimesequence.cli train --data data/DOGEUSDT_1m_recent_600k.pkl --model data/xgboost_trend_model_recent_context_preholdout.json --train-until "2026-05-04 15:59:00" --context BTC=data/BTCUSDT_1m_recent_600k.pkl --context ETH=data/ETHUSDT_1m_recent_600k.pkl --context SOL=data/SOLUSDT_1m_recent_600k.pkl
-python -m pretimesequence.cli fetch --symbol DOGEUSDT --interval 1m --start-time "2024-01-01 00:00:00" --limit 300000 --output data/DOGEUSDT_1m_2024.pkl
-python -m pretimesequence.cli train --data data/DOGEUSDT_1m_2024.pkl --model data/xgboost_trend_model_2024.json
-python -m pretimesequence.cli diagnose --data data/DOGEUSDT_1m_2024.pkl --output outputs/diagnostics_DOGEUSDT_2024.md
-python -m pretimesequence.cli plot --data data/DOGEUSDT_1m_2024.pkl --model data/xgboost_trend_model_2024.json --output outputs/signals_DOGEUSDT_2024.html
+## 文档阅读顺序
+
+1. [PROJECT_STATUS.md](PROJECT_STATUS.md)：先确认什么已完成、什么尚未完成。
+2. [docs/STRATEGY_SPEC.md](docs/STRATEGY_SPEC.md)：确认唯一交易任务和时序。
+3. [docs/GROUND_TRUTH_AND_VALIDATION.md](docs/GROUND_TRUTH_AND_VALIDATION.md)：确认标签、切分和回测标准。
+4. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：查看目标模块和数据流。
+5. [docs/ROADMAP.md](docs/ROADMAP.md)：按阶段推进代码重构。
+
+## v0 运行方式
+
+以下命令仅用于复现现有基线，不代表 v1 设计已经实现：
+
+```bash
+python -m venv .venv
+python -m pip install -r requirements.txt
+python -m pretimesequence.cli diagnose --data data/DOGEUSDT_1m_2024.pkl --output outputs/diagnostics.md
+python -m pretimesequence.cli walk-forward-two-stage --help
 ```
 
-当前默认 GT 是三分类 `short/flat/long`，使用 20 根 K 线 horizon、4ATR barrier、0.5% 最小收益门槛，并扣除手续费和滑点。这个默认值只是初始研究参数，不应该直接视为实盘参数。
+本地密钥只允许通过环境变量或未跟踪的本地文件提供，不得提交到 Git。数据、模型和运行输出同样不进入普通 Git 历史。
 
-当前特征默认使用收益率、波动率、ATR、均线相对偏离、布林 z-score、量能 z-score 和日内周期项，避免把价格水平、均线绝对值这类非平稳变量直接作为主要输入。诊断命令会额外输出 walk-forward 分段验证，优先看它而不是单次随机切分。
+## 研究通过门槛
 
-回测和 HTML 图默认使用 `min-confidence=0.55` 过滤低置信度信号。低置信度分类结果只作为 `flat/hold` 处理，避免模型被迫每根 K 线都给出交易动作。
+任何模型进入 paper trading 前必须同时满足：
 
-`--context SYMBOL=PATH` 可为训练、诊断、预测、回测加入 BTC/ETH/SOL 等市场背景特征。当前实验见 `docs/context_feature_experiment.md`：简单拼接 context 特征未明显改善 XGBoost。
+- 数据和特征不存在未来信息泄漏；
+- 标签、模型、成交和回测使用同一 `StrategySpec`；
+- outer walk-forward 在保守成本后优于无交易及简单基线；
+- 结果不由单一币种、单一周或单一阈值主导；
+- 概率经过时间外校准，阈值仅在内层验证集选择；
+- 最大回撤、最差 fold 和连续亏损风险处于预设预算内；
+- 最终冻结 holdout 在参数确定前从未参与选择。
 
-两阶段 XGBoost 使用 `train-two-stage` 和 `walk-forward-two-stage`。GT 已增加交易口径标签，按真实 TP/SL、杠杆和手续费模拟 long/short outcome。SOL 的 walk-forward 和 forecast features 实验见 `docs/two_stage_xgboost_experiment.md`、`docs/walk_forward_two_stage_sol.md`、`docs/forecast_feature_experiment.md`。
+## 贡献与修改
 
-本地 API key 可来自环境变量，也可 fallback 读取 `oldversion/GetkeyReal.py` 或 `oldversion/Getkey.py`。这些文件被 `.gitignore` 排除，不会提交到远端。
+修改前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [AGENTS.md](AGENTS.md)。新增实验应复制 [docs/EXPERIMENT_TEMPLATE.md](docs/EXPERIMENT_TEMPLATE.md)，记录数据版本、时间边界、参数、成本、基线和完整结果。
 
-## 结构
+## 免责声明
 
-- `pretimesequence/config.py`: API key、代理、testnet 配置读取。
-- `pretimesequence/data.py`: 本地数据读取、标准化、Binance K 线获取。
-- `pretimesequence/features.py`: 趋势预测特征工程。
-- `pretimesequence/targets.py`: 有限 horizon、成本修正的 triple-barrier GT 标签。
-- `pretimesequence/training.py`: 按时间顺序切分的三分类训练流程。
-- `pretimesequence/model.py`: XGBoost 或 fallback 动量预测。
-- `pretimesequence/strategy.py`: 趋势到 `open_long/open_short/hold` 动作。
-- `pretimesequence/backtest.py`: 简化止盈止损回测。
-- `pretimesequence/visualization.py`: HTML K 线图和多空信号点。
-- `pretimesequence/diagnostics.py`: 数据量、标签、特征和模型质量诊断。
-- `pretimesequence/cli.py`: 命令行入口。
+本项目仅用于研究和软件验证，不构成投资建议。加密货币衍生品和高杠杆交易可能导致快速且超过预期的损失。
+
