@@ -75,16 +75,58 @@ PreTimeSenquence/
 
 ## v0 运行方式
 
-以下命令仅用于复现现有基线，不代表 v1 设计已经实现：
+当前项目的 Conda 环境名为 `bitc`。2026-07-13 已验证的环境为 Python 3.9.20，且 `requirements.txt` 中的核心依赖均可正常导入。环境名是开发约定，不应将某台机器的 Conda 安装路径写入脚本。
+
+已验证的核心版本快照：
+
+| Package | Version |
+| --- | --- |
+| Python | 3.9.20 |
+| pandas | 2.2.3 |
+| numpy | 1.24.3 |
+| python-binance | 1.0.21 |
+| xgboost | 2.1.2 |
+| scikit-learn | 1.5.2 |
+| matplotlib | 3.9.2 |
+| plotly | 5.24.1 |
+| seaborn | 0.13.2 |
+
+进入环境并验证项目入口：
 
 ```bash
-python -m venv .venv
-python -m pip install -r requirements.txt
+conda activate bitc
+python --version
+python -m pretimesequence.cli --help
+```
+
+也可以不切换当前 shell 环境，显式通过 `bitc` 运行：
+
+```bash
+conda run -n bitc python -m pretimesequence.cli --help
+```
+
+以下命令仅用于复现现有 v0 基线，不代表 v1 设计已经实现：
+
+```bash
 python -m pretimesequence.cli diagnose --data data/DOGEUSDT_1m_2024.pkl --output outputs/diagnostics.md
 python -m pretimesequence.cli walk-forward-two-stage --help
 ```
 
+当前 v1 Ridge 基线已经可以用一条命令启动完整 nested walk-forward 训练评估：
+
+```powershell
+conda run -n bitc python -B -m pretimesequence.v1 train --data data/SOLUSDT_1m_recent_600k.pkl --output outputs/v1_sol_baseline_20260714 --experiment-id v1-sol-baseline-20260714 --assume-naive-utc --allow-unsafe-pickle
+```
+
+`--output` 必须指向尚不存在的新目录，命令不会覆盖既有实验。`--allow-unsafe-pickle` 只应用于确认可信的本地 pickle；协作者或下载来源不明的数据应先转换成 CSV。命令会保存输入 checksum、配置、fold/candidate 指标、OOF/outer predictions 和 trades，并记录每个 CSV 的 hash、字节数、行数和列 schema；当前仍是研究基线训练，不表示策略已经有效，也不能用于实盘。
+
+上表是当前可运行环境的快照，不是已锁定的可复现依赖规范；`requirements.txt` 目前仍未固定版本。
+
 本地密钥只允许通过环境变量或未跟踪的本地文件提供，不得提交到 Git。数据、模型和运行输出同样不进入普通 Git 历史。
+
+## GLM 外部审阅 agent
+
+本机已验证可通过 Claude Code CLI 调用 GLM，用于独立代码审查和研究方案复核。该路径是外部审阅工具，不是 Codex 原生 subagent；默认只读，其输出必须由主 agent 回到源码、数据和测试复核。配置、安全命令和调用边界见 [docs/GLM_EXTERNAL_REVIEWER.md](docs/GLM_EXTERNAL_REVIEWER.md)。
 
 ## 研究通过门槛
 

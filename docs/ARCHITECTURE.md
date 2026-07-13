@@ -82,6 +82,34 @@ docs/
 
 在 v1 完成前，现有 `pretimesequence/` 继续作为 v0 保留，不应通过简单移动文件伪装为已完成重构。
 
+## 当前增量实现
+
+截至 2026-07-14，首批 **current implementation** 位于 `pretimesequence/v1/`：
+
+```text
+pretimesequence/v1/
+  spec.py       StrategySpec、成本、歧义和 fold-end 合同
+  execution.py  target/backtest 共用的成交、barrier、成本和数据契约
+  targets.py    向量化 next-bar 15m path/action outcomes 与慢速差分 oracle
+  splits.py     purged/embargoed chronological split
+  backtest.py   单持仓逐 bar 事件回测
+  dataset.py    signal_index 对齐、无隐式填补的监督数据契约
+  training.py   deterministic Ridge action-value baseline
+  policy.py     冻结阈值的纯 long/short/flat 决策
+  walk_forward.py inner OOF、候选选择与 outer 单次评估
+  cli.py        本地数据校验、一键训练和审计 bundle 持久化
+  __main__.py   `python -m pretimesequence.v1` 入口
+tests/
+  test_v1_core.py
+  test_v1_dataset_splits.py
+  test_v1_training_walk_forward.py
+  test_v1_cli.py
+```
+
+这是为了在不移动、不删除 v0 模块和 CLI 的前提下建立 correctness core 的过渡布局。上文 `src/pretimesequence/` 仍是 **planned target**；只有在 v1 训练、报告和回测接口稳定并获得确认后才进行包结构迁移。
+
+当前 supervised dataset 复用 v0 的 `add_features` / `FEATURE_COLUMNS` 作为 **current causal baseline**，但不复用其 `ffill().fillna(0)` 行为。初始 warm-up 和无效 target 仍保留在全局 bar timeline 上，通过有效性字段过滤；fold 的 purge 依据真实 target interval，而不是过滤后的行号。CLI 当前保存 run manifest、输入 checksum、配置快照及 fold/candidate/OOF/outer/trade CSV。独立数据集 manifest、context feature contract、calibration、模型持久化与最终 `src/` 布局仍属 **planned**。
+
 ## 模块边界
 
 ### Data

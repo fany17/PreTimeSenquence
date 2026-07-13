@@ -10,25 +10,29 @@
 - [x] 明确 1m 数据、15m horizon 和 next-bar execution；
 - [x] 将杠杆从基础 target 移至风险层；
 - [x] 建立项目状态、架构、数据、GT 和验证文档；
-- [ ] 将规范参数实现为单一 `StrategySpec`；
-- [ ] 为所有配置字段建立 schema 与 validation。
+- [x] 将规范参数实现为单一 `StrategySpec`；
+- [x] 为当前 v1 核心配置字段建立类型 schema、mapping 和 fail-fast validation。
 
-完成门槛：target、backtest 和未来 paper trading 均引用同一配置对象。
+当前边界：v1 target、split 和 backtest 已引用同一配置对象；paper trading 尚未实现，因此 Phase 0 的最终完成门槛尚未全部满足。
 
 ## Phase 1 — Correctness first
 
 目标：修复会使研究结论无效的逻辑。
 
-- [ ] 实现 next-bar entry；
-- [ ] 实现 15m return/MFE/MAE/action outcome targets；
-- [ ] 删除事后多空最优选择及 long tie bias；
-- [ ] 实现 purged/embargoed splits；
-- [ ] 重写事件驱动回测状态机；
-- [ ] fold 末强制平仓；
-- [ ] 添加成本、滑点、funding 和 liquidation 规则；
-- [ ] 为关键边界建立单元测试。
+- [x] 在 v1 correctness core 实现 next-bar entry；
+- [x] 实现 15m return/MFE/MAE/action outcome targets；
+- [x] v1 target 不再事后选择最优方向，也不存在 long tie bias；v0 历史实现继续保留；
+- [x] 实现 purged/embargoed chronological split；
+- [x] 实现单 symbol、单持仓事件驱动回测状态机；
+- [x] 实现 fold 末强制平仓；
+- [x] 实现 fee、spread、slippage 和实际 payment bar funding 规则；
+- [ ] 实现 maintenance margin、liquidation、tick size、step size 和 minimum notional；
+- [x] 为当前已实现的关键时序和边界建立合成单元测试；
+- [x] 将 v1 correctness core 接入 deterministic Ridge action-value 训练和 interval-aware nested walk-forward；
+- [x] 为当前 Ridge baseline 实现一键训练入口和持久化 run/checksum/config/fold/candidate/OOF/outer/trade 审计 bundle；
+- [ ] 实现 calibration、更多基线、独立数据集 manifest 和模型 artifact manifest。
 
-完成门槛：合成数据上的 entry、TP/SL、账户权益和 split 测试全部通过。
+当前验证：43 项合成测试和一段连续 500-bar 的真实数据 CLI smoke 已通过，六类带完整性记录的审计文件已原子落盘；600,000-bar 默认窗口预检已在约 18.17 秒内构造 5 个 outer folds × 每折 3 个 inner folds。liquidation、交易所规则、calibration 和模型持久化仍未完成，因此 Phase 1 尚未整体完成。
 
 ## Phase 2 — Reproducible data
 
@@ -47,12 +51,15 @@
 
 目标：建立最小但可信的研究基线。
 
-- [ ] always-flat、random、momentum、mean-reversion、breakout；
-- [ ] logistic/linear 与 XGBoost；
-- [ ] nested walk-forward；
+- [x] 在 v1 fold report 中加入 always-flat 基线；
+- [ ] matched-turnover random、momentum、mean-reversion、breakout；
+- [x] 实现 deterministic Ridge long/short action-value baseline；
+- [ ] logistic 与 XGBoost baseline；
+- [x] 实现 inner OOF、inner-only 选择和 outer 单次评估的 nested walk-forward API；
 - [ ] 多币种、多 regime 分层；
 - [ ] 成本和参数敏感性；
-- [ ] 统一 forecast、calibration 和 trading report。
+- [x] 持久化当前 Ridge baseline 的 forecast/trading 审计表和 run manifest；
+- [ ] 增加 calibration report、模型 artifact manifest 及其跨模型统一 schema。
 
 完成门槛：所有候选模型在同一 outer folds 上与基线比较，不允许按测试结果选择参数。
 

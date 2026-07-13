@@ -11,6 +11,10 @@
 5. [ROADMAP.md](ROADMAP.md)：从 v0 到 v1 的分阶段实施顺序。
 6. [EXPERIMENT_TEMPLATE.md](EXPERIMENT_TEMPLATE.md)：统一实验记录格式。
 
+## 开发与审阅工具
+
+- [GLM_EXTERNAL_REVIEWER.md](GLM_EXTERNAL_REVIEWER.md)：通过 Claude Code CLI 调用 GLM 外部审阅 agent 的已验证环境、安全命令和使用边界。
+
 ## v0 历史实验
 
 下列文档是既有代码的实验记录，不代表 v1 规范：

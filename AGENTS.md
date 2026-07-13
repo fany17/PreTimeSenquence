@@ -54,3 +54,14 @@
 - 全部候选参数，而不只记录最优参数；
 - fold 级结果、失败结果和结论边界。
 
+## GLM 外部审阅 agent
+
+本机可通过 Claude Code CLI 调用 GLM 获取独立复核意见。完整命令、配置和边界见 `docs/GLM_EXTERNAL_REVIEWER.md`。
+
+- 只在用户明确要求 GLM 复核或外部第二意见时调用；
+- 默认命令为 `claude -p --permission-mode plan --no-session-persistence "<task>"`；
+- 该调用不是 Codex 原生 subagent，不得对其输出免除本地证据复核；
+- 默认只读，不授权外部 agent 修改项目文件；
+- 不得传入 API key、账户信息、原始大数据或未脱敏日志；
+- 调用失败时显式报告，不得静默换模型并宣称为 GLM 结果。
+
